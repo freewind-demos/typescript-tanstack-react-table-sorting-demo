@@ -1,68 +1,91 @@
-import React from 'react'
+import React, { HTMLAttributes, HTMLProps } from 'react'
 import ReactDOM from 'react-dom'
 
 import './index.css'
 
-import {
-  createTable,
-  GroupingState,
-  useTableInstance,
-  getPaginationRowModel,
-  getFilteredRowModel,
-  getCoreRowModel,
-  getGroupedRowModel,
-  getExpandedRowModel,
-} from '@tanstack/react-table'
 import { makeData, Person } from './makeData'
+
+import {
+  Column,
+  createTable,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  TableInstance,
+  useTableInstance,
+} from '@tanstack/react-table'
 
 let table = createTable().setRowType<Person>()
 
 function App() {
   const rerender = React.useReducer(() => ({}), {})[1]
 
+  const [rowSelection, setRowSelection] = React.useState({})
+  const [globalFilter, setGlobalFilter] = React.useState('')
+
   const columns = React.useMemo(
     () => [
+      table.createDisplayColumn({
+        id: 'select',
+        header: ({ instance }) => (
+          <IndeterminateCheckbox
+            {...{
+              checked: instance.getIsAllRowsSelected(),
+              indeterminate: instance.getIsSomeRowsSelected(),
+              onChange: instance.getToggleAllRowsSelectedHandler(),
+            }}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="px-1">
+            <IndeterminateCheckbox
+              {...{
+                checked: row.getIsSelected(),
+                indeterminate: row.getIsSomeSelected(),
+                onChange: row.getToggleSelectedHandler(),
+              }}
+            />
+          </div>
+        ),
+      }),
       table.createGroup({
         header: 'Name',
+        footer: props => props.column.id,
         columns: [
           table.createDataColumn('firstName', {
-            header: 'First Name',
             cell: info => info.getValue(),
+            footer: props => props.column.id,
           }),
           table.createDataColumn(row => row.lastName, {
             id: 'lastName',
-            header: () => <span>Last Name</span>,
             cell: info => info.getValue(),
+            header: () => <span>Last Name</span>,
+            footer: props => props.column.id,
           }),
         ],
       }),
       table.createGroup({
         header: 'Info',
+        footer: props => props.column.id,
         columns: [
           table.createDataColumn('age', {
             header: () => 'Age',
-            aggregatedCell: ({ getValue }) =>
-              Math.round(getValue() * 100) / 100,
-            aggregationFn: 'median',
+            footer: props => props.column.id,
           }),
           table.createGroup({
             header: 'More Info',
             columns: [
               table.createDataColumn('visits', {
                 header: () => <span>Visits</span>,
-                aggregationFn: 'sum',
-                // aggregatedCell: ({ getValue }) => getValue().toLocaleString(),
+                footer: props => props.column.id,
               }),
               table.createDataColumn('status', {
                 header: 'Status',
+                footer: props => props.column.id,
               }),
               table.createDataColumn('progress', {
                 header: 'Profile Progress',
-                cell: ({ getValue }) =>
-                  Math.round(getValue() * 100) / 100 + '%',
-                aggregationFn: 'mean',
-                aggregatedCell: ({ getValue }) =>
-                  Math.round(getValue() * 100) / 100 + '%',
+                footer: props => props.column.id,
               }),
             ],
           }),
@@ -75,25 +98,29 @@ function App() {
   const [data, setData] = React.useState(() => makeData(100000))
   const refreshData = () => setData(() => makeData(100000))
 
-  const [grouping, setGrouping] = React.useState<GroupingState>([])
-
   const instance = useTableInstance(table, {
     data,
     columns,
     state: {
-      grouping,
+      rowSelection,
     },
-    onGroupingChange: setGrouping,
-    getExpandedRowModel: getExpandedRowModel(),
-    getGroupedRowModel: getGroupedRowModel(),
+    onRowSelectionChange: setRowSelection,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
     debugTable: true,
   })
 
   return (
     <div className="p-2">
+      <div>
+        <input
+          value={globalFilter ?? ''}
+          onChange={e => setGlobalFilter(e.target.value)}
+          className="p-2 font-lg shadow border border-block"
+          placeholder="Search all columns..."
+        />
+      </div>
       <div className="h-2" />
       <table>
         <thead>
@@ -103,24 +130,17 @@ function App() {
               return (
                 <th key={header.id} colSpan={header.colSpan}>
                   {header.isPlaceholder ? null : (
-                    <div>
-                      {header.column.getCanGroup() ? (
-                        // If the header can be grouped, let's add a toggle
-                        <button
-                          {...{
-                            onClick: header.column.getToggleGroupingHandler(),
-                            style: {
-                              cursor: 'pointer',
-                            },
-                          }}
-                        >
-                          {header.column.getIsGrouped()
-                            ? `🛑(${header.column.getGroupedIndex()}) `
-                            : `👊 `}
-                        </button>
-                      ) : null}{' '}
+                    <>
                       {header.renderHeader()}
-                    </div>
+                      {header.column.getCanFilter() ? (
+                        <div>
+                          <Filter
+                            column={header.column}
+                            instance={instance}
+                          />
+                        </div>
+                      ) : null}
+                    </>
                   )}
                 </th>
               )
@@ -133,53 +153,28 @@ function App() {
           return (
             <tr key={row.id}>
               {row.getVisibleCells().map(cell => {
-                return (
-                  <td
-                    {...{
-                      key: cell.id,
-                      style: {
-                        background: cell.getIsGrouped()
-                          ? '#0aff0082'
-                          : cell.getIsAggregated()
-                            ? '#ffa50078'
-                            : cell.getIsPlaceholder()
-                              ? '#ff000042'
-                              : 'white',
-                      },
-                    }}
-                  >
-                    {cell.getIsGrouped() ? (
-                      // If it's a grouped cell, add an expander and row count
-                      <>
-                        <button
-                          {...{
-                            onClick: row.getToggleExpandedHandler(),
-                            style: {
-                              cursor: row.getCanExpand()
-                                ? 'pointer'
-                                : 'normal',
-                            },
-                          }}
-                        >
-                          {row.getIsExpanded() ? '👇' : '👉'}{' '}
-                          {cell.renderCell()} ({row.subRows.length})
-                        </button>
-                      </>
-                    ) : cell.getIsAggregated() ? (
-                      // If the cell is aggregated, use the Aggregated
-                      // renderer for cell
-                      cell.renderAggregatedCell()
-                    ) : cell.getIsPlaceholder() ? null : ( // For cells with repeated values, render null
-                      // Otherwise, just render the regular cell
-                      cell.renderCell()
-                    )}
-                  </td>
-                )
+                return <td key={cell.id}>{cell.renderCell()}</td>
               })}
             </tr>
           )
         })}
         </tbody>
+        <tfoot>
+        <tr>
+          <td className="p-1">
+            <IndeterminateCheckbox
+              {...{
+                checked: instance.getIsAllPageRowsSelected(),
+                indeterminate: instance.getIsSomePageRowsSelected(),
+                onChange: instance.getToggleAllPageRowsSelectedHandler(),
+              }}
+            />
+          </td>
+          <td colSpan={20}>
+            Page Rows ({instance.getRowModel().rows.length})
+          </td>
+        </tr>
+        </tfoot>
       </table>
       <div className="h-2" />
       <div className="flex items-center gap-2">
@@ -243,15 +238,114 @@ function App() {
           ))}
         </select>
       </div>
-      <div>{instance.getRowModel().rows.length} Rows</div>
+      <br />
       <div>
-        <button onClick={() => rerender()}>Force Rerender</button>
+        {Object.keys(rowSelection).length} of{' '}
+        {instance.getPreFilteredRowModel().rows.length} Total Rows Selected
+      </div>
+      <hr />
+      <br />
+      <div>
+        <button className="border rounded p-2 mb-2" onClick={() => rerender()}>
+          Force Rerender
+        </button>
       </div>
       <div>
-        <button onClick={() => refreshData()}>Refresh Data</button>
+        <button
+          className="border rounded p-2 mb-2"
+          onClick={() => refreshData()}
+        >
+          Refresh Data
+        </button>
       </div>
-      <pre>{JSON.stringify(grouping, null, 2)}</pre>
+      <div>
+        <button
+          className="border rounded p-2 mb-2"
+          onClick={() => console.info('rowSelection', rowSelection)}
+        >
+          Log `rowSelection` state
+        </button>
+      </div>
+      <div>
+        <button
+          className="border rounded p-2 mb-2"
+          onClick={() =>
+            console.info(
+              'instance.getSelectedFlatRows()',
+              instance.getSelectedRowModel().flatRows
+            )
+          }
+        >
+          Log instance.getSelectedFlatRows()
+        </button>
+      </div>
     </div>
+  )
+}
+
+function Filter({
+                  column,
+                  instance,
+                }: {
+  column: Column<any>
+  instance: TableInstance<any>
+}) {
+  const firstValue = instance
+    .getPreFilteredRowModel()
+    .flatRows[0]?.getValue(column.id)
+
+  return typeof firstValue === 'number' ? (
+    <div className="flex space-x-2">
+      <input
+        type="number"
+        value={((column.getFilterValue() as any)?.[0] ?? '') as string}
+        onChange={e =>
+          column.setFilterValue((old: any) => [e.target.value, old?.[1]])
+        }
+        placeholder={`Min`}
+        className="w-24 border shadow rounded"
+      />
+      <input
+        type="number"
+        value={((column.getFilterValue() as any)?.[1] ?? '') as string}
+        onChange={e =>
+          column.setFilterValue((old: any) => [old?.[0], e.target.value])
+        }
+        placeholder={`Max`}
+        className="w-24 border shadow rounded"
+      />
+    </div>
+  ) : (
+    <input
+      type="text"
+      value={(column.getFilterValue() ?? '') as string}
+      onChange={e => column.setFilterValue(e.target.value)}
+      placeholder={`Search...`}
+      className="w-36 border shadow rounded"
+    />
+  )
+}
+
+function IndeterminateCheckbox({
+                                 indeterminate,
+                                 className = '',
+                                 ...rest
+                               }: { indeterminate?: boolean } & HTMLProps<HTMLInputElement>) {
+  const ref = React.useRef<HTMLInputElement>(null!)
+
+  React.useEffect(() => {
+    if (typeof indeterminate === 'boolean') {
+      ref.current.indeterminate = !rest.checked && indeterminate
+    }
+  }, [ref, indeterminate])
+
+  return (
+    <input
+      type="checkbox"
+      ref={ref}
+      className={className + ' cursor-pointer'}
+      {...rest}
+    />
   )
 }
 
