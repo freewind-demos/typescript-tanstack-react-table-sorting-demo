@@ -1,9 +1,9 @@
-TypeScript React Table Expanding Demo
+TypeScript React Table Fully Controlled Demo
 ===========================================
 
 ```
 npm install
-npm run demo
+npm start
 ```
 
 It will open page on browser automatically.

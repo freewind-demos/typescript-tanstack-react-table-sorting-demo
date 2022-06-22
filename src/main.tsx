@@ -1,185 +1,140 @@
-import React, { HTMLAttributes, HTMLProps } from 'react'
+import React from 'react'
 import ReactDOM from 'react-dom'
 
 import './index.css'
 
 import {
   createTable,
-  Column,
-  TableInstance,
-  ExpandedState,
-  useTableInstance,
   getCoreRowModel,
   getPaginationRowModel,
-  getFilteredRowModel,
-  getExpandedRowModel,
+  useTableInstance,
 } from '@tanstack/react-table'
-import { makeData, Person } from './makeData'
+import { makeData } from './makeData'
 
-let table = createTable().setRowType<Person>()
+type Person = {
+  firstName: string
+  lastName: string
+  age: number
+  visits: number
+  status: string
+  progress: number
+}
 
-function App() {
-  const rerender = React.useReducer(() => ({}), {})[1]
+const table = createTable().setRowType<Person>()
 
-  const columns = React.useMemo(
-    () => [
-      table.createGroup({
-        header: 'Name',
+const defaultColumns = [
+  table.createGroup({
+    header: 'Name',
+    footer: props => props.column.id,
+    columns: [
+      table.createDataColumn('firstName', {
+        cell: info => info.getValue(),
         footer: props => props.column.id,
-        columns: [
-          table.createDataColumn('firstName', {
-            header: ({ instance }) => (
-              <>
-                <IndeterminateCheckbox
-                  {...{
-                    checked: instance.getIsAllRowsSelected(),
-                    indeterminate: instance.getIsSomeRowsSelected(),
-                    onChange: instance.getToggleAllRowsSelectedHandler(),
-                  }}
-                />{' '}
-                <button
-                  {...{
-                    onClick: instance.getToggleAllRowsExpandedHandler(),
-                  }}
-                >
-                  {instance.getIsAllRowsExpanded() ? '👇' : '👉'}
-                </button>{' '}
-                First Name
-              </>
-            ),
-            cell: ({ row, getValue }) => (
-              <div
-                style={{
-                  // Since rows are flattened by default,
-                  // we can use the row.depth property
-                  // and paddingLeft to visually indicate the depth
-                  // of the row
-                  paddingLeft: `${row.depth * 2}rem`,
-                }}
-              >
-                <IndeterminateCheckbox
-                  {...{
-                    checked: row.getIsSelected(),
-                    indeterminate: row.getIsSomeSelected(),
-                    onChange: row.getToggleSelectedHandler(),
-                  }}
-                />{' '}
-                {row.getCanExpand() ? (
-                  <button
-                    {...{
-                      onClick: row.getToggleExpandedHandler(),
-                      style: { cursor: 'pointer' },
-                    }}
-                  >
-                    {row.getIsExpanded() ? '👇' : '👉'}
-                  </button>
-                ) : (
-                  '🔵'
-                )}{' '}
-                {getValue()}
-              </div>
-            ),
-            footer: props => props.column.id,
-          }),
-          table.createDataColumn(row => row.lastName, {
-            id: 'lastName',
-            cell: info => info.getValue(),
-            header: () => <span>Last Name</span>,
-            footer: props => props.column.id,
-          }),
-        ],
+      }),
+      table.createDataColumn(row => row.lastName, {
+        id: 'lastName',
+        cell: info => info.getValue(),
+        header: () => <span>Last Name</span>,
+        footer: props => props.column.id,
+      }),
+    ],
+  }),
+  table.createGroup({
+    header: 'Info',
+    footer: props => props.column.id,
+    columns: [
+      table.createDataColumn('age', {
+        header: () => 'Age',
+        footer: props => props.column.id,
       }),
       table.createGroup({
-        header: 'Info',
-        footer: props => props.column.id,
+        header: 'More Info',
         columns: [
-          table.createDataColumn('age', {
-            header: () => 'Age',
+          table.createDataColumn('visits', {
+            header: () => <span>Visits</span>,
             footer: props => props.column.id,
           }),
-          table.createGroup({
-            header: 'More Info',
-            columns: [
-              table.createDataColumn('visits', {
-                header: () => <span>Visits</span>,
-                footer: props => props.column.id,
-              }),
-              table.createDataColumn('status', {
-                header: 'Status',
-                footer: props => props.column.id,
-              }),
-              table.createDataColumn('progress', {
-                header: 'Profile Progress',
-                footer: props => props.column.id,
-              }),
-            ],
+          table.createDataColumn('status', {
+            header: 'Status',
+            footer: props => props.column.id,
+          }),
+          table.createDataColumn('progress', {
+            header: 'Profile Progress',
+            footer: props => props.column.id,
           }),
         ],
       }),
     ],
-    []
-  )
+  }),
+]
 
-  const [data, setData] = React.useState(() => makeData(100, 5, 3))
-  const refreshData = () => setData(() => makeData(100, 5, 3))
+function App() {
+  const [data] = React.useState(() => makeData(1000))
+  const [columns] = React.useState<typeof defaultColumns>(() => [
+    ...defaultColumns,
+  ])
 
-  const [expanded, setExpanded] = React.useState<ExpandedState>({})
+  const rerender = React.useReducer(() => ({}), {})[1]
 
+  // Create the instance and pass your options
   const instance = useTableInstance(table, {
     data,
     columns,
-    state: {
-      expanded,
-    },
-    onExpandedChange: setExpanded,
-    getSubRows: row => row.subRows,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getExpandedRowModel: getExpandedRowModel(),
-    debugTable: true,
   })
+
+  // Manage your own state
+  const [state, setState] = React.useState(instance.initialState)
+
+  // Override the state managers for the table instance to your own
+  instance.setOptions(prev => ({
+    ...prev,
+    state,
+    onStateChange: setState,
+    // These are just table options, so if things
+    // need to change based on your state, you can
+    // derive them here
+
+    // Just for fun, let's debug everything if the pageIndex
+    // is greater than 2
+    debugTable: state.pagination.pageIndex > 2,
+  }))
 
   return (
     <div className="p-2">
-      <div className="h-2" />
       <table>
         <thead>
         {instance.getHeaderGroups().map(headerGroup => (
           <tr key={headerGroup.id}>
-            {headerGroup.headers.map(header => {
-              return (
-                <th key={header.id} colSpan={header.colSpan}>
-                  {header.isPlaceholder ? null : (
-                    <div>
-                      {header.renderHeader()}
-                      {header.column.getCanFilter() ? (
-                        <div>
-                          <Filter
-                            column={header.column}
-                            instance={instance}
-                          />
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
-                </th>
-              )
-            })}
+            {headerGroup.headers.map(header => (
+              <th key={header.id} colSpan={header.colSpan}>
+                {header.isPlaceholder ? null : header.renderHeader()}
+              </th>
+            ))}
           </tr>
         ))}
         </thead>
         <tbody>
-        {instance.getRowModel().rows.map(row => {
-          return (
-            <tr key={row.id}>
-              {row.getVisibleCells().map(cell => {
-                return <td key={cell.id}>{cell.renderCell()}</td>
-              })}
-            </tr>
-          )
-        })}
+        {instance.getRowModel().rows.map(row => (
+          <tr key={row.id}>
+            {row.getVisibleCells().map(cell => (
+              <td key={cell.id}>{cell.renderCell()}</td>
+            ))}
+          </tr>
+        ))}
         </tbody>
+        <tfoot>
+        {instance.getFooterGroups().map(footerGroup => (
+          <tr key={footerGroup.id}>
+            {footerGroup.headers.map(header => (
+              <th key={header.id} colSpan={header.colSpan}>
+                {header.isPlaceholder ? null : header.renderFooter()}
+              </th>
+            ))}
+          </tr>
+        ))}
+        </tfoot>
       </table>
       <div className="h-2" />
       <div className="flex items-center gap-2">
@@ -243,89 +198,11 @@ function App() {
           ))}
         </select>
       </div>
-      <div>{instance.getRowModel().rows.length} Rows</div>
-      <div>
-        <button onClick={() => rerender()}>Force Rerender</button>
-      </div>
-      <div>
-        <button onClick={() => refreshData()}>Refresh Data</button>
-      </div>
-      <pre>{JSON.stringify(expanded, null, 2)}</pre>
+      <div className="h-4" />
+      <button onClick={() => rerender()} className="border p-2">
+        Rerender
+      </button>
     </div>
-  )
-}
-
-function Filter({
-                  column,
-                  instance,
-                }: {
-  column: Column<any>
-  instance: TableInstance<any>
-}) {
-  const firstValue = instance
-    .getPreFilteredRowModel()
-    .flatRows[0]?.getValue(column.id)
-
-  const columnFilterValue = column.getFilterValue()
-
-  return typeof firstValue === 'number' ? (
-    <div className="flex space-x-2">
-      <input
-        type="number"
-        value={(columnFilterValue as [number, number])?.[0] ?? ''}
-        onChange={e =>
-          column.setFilterValue((old: [number, number]) => [
-            e.target.value,
-            old?.[1],
-          ])
-        }
-        placeholder={`Min`}
-        className="w-24 border shadow rounded"
-      />
-      <input
-        type="number"
-        value={(columnFilterValue as [number, number])?.[1] ?? ''}
-        onChange={e =>
-          column.setFilterValue((old: [number, number]) => [
-            old?.[0],
-            e.target.value,
-          ])
-        }
-        placeholder={`Max`}
-        className="w-24 border shadow rounded"
-      />
-    </div>
-  ) : (
-    <input
-      type="text"
-      value={(columnFilterValue ?? '') as string}
-      onChange={e => column.setFilterValue(e.target.value)}
-      placeholder={`Search...`}
-      className="w-36 border shadow rounded"
-    />
-  )
-}
-
-function IndeterminateCheckbox({
-                                 indeterminate,
-                                 className = '',
-                                 ...rest
-                               }: { indeterminate?: boolean } & HTMLProps<HTMLInputElement>) {
-  const ref = React.useRef<HTMLInputElement>(null!)
-
-  React.useEffect(() => {
-    if (typeof indeterminate === 'boolean') {
-      ref.current.indeterminate = !rest.checked && indeterminate
-    }
-  }, [ref, indeterminate])
-
-  return (
-    <input
-      type="checkbox"
-      ref={ref}
-      className={className + ' cursor-pointer'}
-      {...rest}
-    />
   )
 }
 
