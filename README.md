@@ -1,4 +1,4 @@
-TypeScript React Table Row Selection Demo
+TypeScript React Table Sorting Demo
 ===========================================
 
 ```
