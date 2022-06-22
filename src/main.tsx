@@ -5,136 +5,181 @@ import './index.css'
 
 import {
   createTable,
-  getCoreRowModel,
-  getPaginationRowModel,
+  GroupingState,
   useTableInstance,
+  getPaginationRowModel,
+  getFilteredRowModel,
+  getCoreRowModel,
+  getGroupedRowModel,
+  getExpandedRowModel,
 } from '@tanstack/react-table'
-import { makeData } from './makeData'
+import { makeData, Person } from './makeData'
 
-type Person = {
-  firstName: string
-  lastName: string
-  age: number
-  visits: number
-  status: string
-  progress: number
-}
+let table = createTable().setRowType<Person>()
 
-const table = createTable().setRowType<Person>()
+function App() {
+  const rerender = React.useReducer(() => ({}), {})[1]
 
-const defaultColumns = [
-  table.createGroup({
-    header: 'Name',
-    footer: props => props.column.id,
-    columns: [
-      table.createDataColumn('firstName', {
-        cell: info => info.getValue(),
-        footer: props => props.column.id,
-      }),
-      table.createDataColumn(row => row.lastName, {
-        id: 'lastName',
-        cell: info => info.getValue(),
-        header: () => <span>Last Name</span>,
-        footer: props => props.column.id,
-      }),
-    ],
-  }),
-  table.createGroup({
-    header: 'Info',
-    footer: props => props.column.id,
-    columns: [
-      table.createDataColumn('age', {
-        header: () => 'Age',
-        footer: props => props.column.id,
+  const columns = React.useMemo(
+    () => [
+      table.createGroup({
+        header: 'Name',
+        columns: [
+          table.createDataColumn('firstName', {
+            header: 'First Name',
+            cell: info => info.getValue(),
+          }),
+          table.createDataColumn(row => row.lastName, {
+            id: 'lastName',
+            header: () => <span>Last Name</span>,
+            cell: info => info.getValue(),
+          }),
+        ],
       }),
       table.createGroup({
-        header: 'More Info',
+        header: 'Info',
         columns: [
-          table.createDataColumn('visits', {
-            header: () => <span>Visits</span>,
-            footer: props => props.column.id,
+          table.createDataColumn('age', {
+            header: () => 'Age',
+            aggregatedCell: ({ getValue }) =>
+              Math.round(getValue() * 100) / 100,
+            aggregationFn: 'median',
           }),
-          table.createDataColumn('status', {
-            header: 'Status',
-            footer: props => props.column.id,
-          }),
-          table.createDataColumn('progress', {
-            header: 'Profile Progress',
-            footer: props => props.column.id,
+          table.createGroup({
+            header: 'More Info',
+            columns: [
+              table.createDataColumn('visits', {
+                header: () => <span>Visits</span>,
+                aggregationFn: 'sum',
+                // aggregatedCell: ({ getValue }) => getValue().toLocaleString(),
+              }),
+              table.createDataColumn('status', {
+                header: 'Status',
+              }),
+              table.createDataColumn('progress', {
+                header: 'Profile Progress',
+                cell: ({ getValue }) =>
+                  Math.round(getValue() * 100) / 100 + '%',
+                aggregationFn: 'mean',
+                aggregatedCell: ({ getValue }) =>
+                  Math.round(getValue() * 100) / 100 + '%',
+              }),
+            ],
           }),
         ],
       }),
     ],
-  }),
-]
+    []
+  )
 
-function App() {
-  const [data] = React.useState(() => makeData(1000))
-  const [columns] = React.useState<typeof defaultColumns>(() => [
-    ...defaultColumns,
-  ])
+  const [data, setData] = React.useState(() => makeData(100000))
+  const refreshData = () => setData(() => makeData(100000))
 
-  const rerender = React.useReducer(() => ({}), {})[1]
+  const [grouping, setGrouping] = React.useState<GroupingState>([])
 
-  // Create the instance and pass your options
   const instance = useTableInstance(table, {
     data,
     columns,
+    state: {
+      grouping,
+    },
+    onGroupingChange: setGrouping,
+    getExpandedRowModel: getExpandedRowModel(),
+    getGroupedRowModel: getGroupedRowModel(),
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    debugTable: true,
   })
-
-  // Manage your own state
-  const [state, setState] = React.useState(instance.initialState)
-
-  // Override the state managers for the table instance to your own
-  instance.setOptions(prev => ({
-    ...prev,
-    state,
-    onStateChange: setState,
-    // These are just table options, so if things
-    // need to change based on your state, you can
-    // derive them here
-
-    // Just for fun, let's debug everything if the pageIndex
-    // is greater than 2
-    debugTable: state.pagination.pageIndex > 2,
-  }))
 
   return (
     <div className="p-2">
+      <div className="h-2" />
       <table>
         <thead>
         {instance.getHeaderGroups().map(headerGroup => (
           <tr key={headerGroup.id}>
-            {headerGroup.headers.map(header => (
-              <th key={header.id} colSpan={header.colSpan}>
-                {header.isPlaceholder ? null : header.renderHeader()}
-              </th>
-            ))}
+            {headerGroup.headers.map(header => {
+              return (
+                <th key={header.id} colSpan={header.colSpan}>
+                  {header.isPlaceholder ? null : (
+                    <div>
+                      {header.column.getCanGroup() ? (
+                        // If the header can be grouped, let's add a toggle
+                        <button
+                          {...{
+                            onClick: header.column.getToggleGroupingHandler(),
+                            style: {
+                              cursor: 'pointer',
+                            },
+                          }}
+                        >
+                          {header.column.getIsGrouped()
+                            ? `🛑(${header.column.getGroupedIndex()}) `
+                            : `👊 `}
+                        </button>
+                      ) : null}{' '}
+                      {header.renderHeader()}
+                    </div>
+                  )}
+                </th>
+              )
+            })}
           </tr>
         ))}
         </thead>
         <tbody>
-        {instance.getRowModel().rows.map(row => (
-          <tr key={row.id}>
-            {row.getVisibleCells().map(cell => (
-              <td key={cell.id}>{cell.renderCell()}</td>
-            ))}
-          </tr>
-        ))}
+        {instance.getRowModel().rows.map(row => {
+          return (
+            <tr key={row.id}>
+              {row.getVisibleCells().map(cell => {
+                return (
+                  <td
+                    {...{
+                      key: cell.id,
+                      style: {
+                        background: cell.getIsGrouped()
+                          ? '#0aff0082'
+                          : cell.getIsAggregated()
+                            ? '#ffa50078'
+                            : cell.getIsPlaceholder()
+                              ? '#ff000042'
+                              : 'white',
+                      },
+                    }}
+                  >
+                    {cell.getIsGrouped() ? (
+                      // If it's a grouped cell, add an expander and row count
+                      <>
+                        <button
+                          {...{
+                            onClick: row.getToggleExpandedHandler(),
+                            style: {
+                              cursor: row.getCanExpand()
+                                ? 'pointer'
+                                : 'normal',
+                            },
+                          }}
+                        >
+                          {row.getIsExpanded() ? '👇' : '👉'}{' '}
+                          {cell.renderCell()} ({row.subRows.length})
+                        </button>
+                      </>
+                    ) : cell.getIsAggregated() ? (
+                      // If the cell is aggregated, use the Aggregated
+                      // renderer for cell
+                      cell.renderAggregatedCell()
+                    ) : cell.getIsPlaceholder() ? null : ( // For cells with repeated values, render null
+                      // Otherwise, just render the regular cell
+                      cell.renderCell()
+                    )}
+                  </td>
+                )
+              })}
+            </tr>
+          )
+        })}
         </tbody>
-        <tfoot>
-        {instance.getFooterGroups().map(footerGroup => (
-          <tr key={footerGroup.id}>
-            {footerGroup.headers.map(header => (
-              <th key={header.id} colSpan={header.colSpan}>
-                {header.isPlaceholder ? null : header.renderFooter()}
-              </th>
-            ))}
-          </tr>
-        ))}
-        </tfoot>
       </table>
       <div className="h-2" />
       <div className="flex items-center gap-2">
@@ -198,10 +243,14 @@ function App() {
           ))}
         </select>
       </div>
-      <div className="h-4" />
-      <button onClick={() => rerender()} className="border p-2">
-        Rerender
-      </button>
+      <div>{instance.getRowModel().rows.length} Rows</div>
+      <div>
+        <button onClick={() => rerender()}>Force Rerender</button>
+      </div>
+      <div>
+        <button onClick={() => refreshData()}>Refresh Data</button>
+      </div>
+      <pre>{JSON.stringify(grouping, null, 2)}</pre>
     </div>
   )
 }
